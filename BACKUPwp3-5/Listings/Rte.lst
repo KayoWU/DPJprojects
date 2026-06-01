@@ -1,0 +1,179 @@
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 01:17:00 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE RTE
+OBJECT MODULE PLACED IN .\Objects\Rte.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Service\Rte\Rte.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config;.\Dev
+                    -ice;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bsw\Mc
+                    -al\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\EcuAb\Ser
+                    -ial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECTEXTEND 
+                    -PRINT(.\Listings\Rte.lst) OBJECT(.\Objects\Rte.obj)
+
+line level    source
+
+   1          /**
+   2           * @file    Rte.c
+   3           * @brief   RTE implementation — thin wrappers over EcuAb services
+   4           *
+   5           * Each RTE API is a one-liner that delegates to the corresponding
+   6           * EcuAb module. This indirection is the key AUTOSAR pattern:
+   7           * if the hardware changes, only Rte.c needs updating — App code is
+   8           * untouched.
+   9           */
+  10          
+  11          #include "Rte.h"
+  12          #include "Serial.h"
+  13          #include "Adc.h"
+  14          #include "IrSensor.h"
+  15          #include "Led8.h"
+  16          #include "Lcd1602.h"
+  17          #include "At24c02.h"
+  18          #include "Timer2.h"
+  19          #include "Iic.h"
+  20          
+  21          /* 初始化RTE背后的全部服务，让App不用关心底层初始化顺序。 */
+  22          void Rte_Init(void)
+  23          {
+  24   1          Serial_Init();   /* 串口初始化 → Uart_Init */
+  25   1          Adc_Init();      /* ADC0804风格并口ADC初始化 */
+  26   1          IrSensor_Init(); /* 红外接收初始化：INT1 + Timer0 */
+  27   1          Led8_Init();     /* 8位LED锁存输出初始化 */
+  28   1          Lcd1602_Init();  /* LCD1602初始化 */
+  29   1          At24c02_Init();  /* IIC EEPROM初始化 */
+  30   1          Timer2_Init();   /* Timer2周期标志初始化 */
+  31   1      }
+  32          
+  33          /* RTE周期调度：推进所有非阻塞状态机。 */
+  34          void Rte_MainFunction(void)
+  35          {
+  36   1          uint16 tick;
+  37   1      
+  38   1          tick = Timer2_GetTick();
+  39   1          Iic_MainFunction();
+  40   1          At24c02_MainFunction(tick);
+  41   1          Lcd1602_MainFunction(tick);
+  42   1          IrSensor_MainFunction();
+  43   1      }
+  44          
+  45          /* 获取1ms系统节拍，给App做周期判断。 */
+  46          uint16 Rte_GetSystemTick(void)
+  47          {
+  48   1          return Timer2_GetTick();
+  49   1      }
+  50          
+  51          /* 读取串口接收缓存：App只通过RTE拿数据，不直接碰UART寄存器。 */
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 01:17:00 PAGE 2   
+
+  52          uint8 Rte_ReadSerialData(void)
+  53          {
+  54   1          return Serial_GetReceivedData();  /* 读一个字节 */
+  55   1      }
+  56          
+  57          /* 清空串口接收缓存：常用于命令处理完成后避免重复执行。 */
+  58          void Rte_ClearSerialData(void)
+  59          {
+  60   1          Serial_ClearReceivedData();       /* 清接收缓存 */
+  61   1      }
+  62          
+  63          /* 发送一个串口字节：RTE向下转给Serial，再由Uart写硬件。 */
+  64          void Rte_SendSerialByte(uint8 txData)
+  65          {
+  66   1          Serial_SendByte(txData);          /* 发一个字节 */
+  67   1      }
+  68          
+  69          /* 查询串口是否可以发送下一个字节。 */
+  70          boolean Rte_IsSerialTxReady(void)
+  71          {
+  72   1          return Serial_IsTxReady();
+  73   1      }
+  74          
+  75          /* 读取ADC原始值：返回0到255的8位采样值。 */
+  76          uint8 Rte_ReadAdcValue(void)
+  77          {
+  78   1          return Adc_ReadValue();
+  79   1      }
+  80          
+  81          /* ADC换算：把8位采样值按配置参考电压换算成毫伏。 */
+  82          uint16 Rte_AdcConvertToMv(uint8 adcValue)
+  83          {
+  84   1          return Adc_ConvertToMv(adcValue);
+  85   1      }
+  86          
+  87          /* RTE红外接口：App只问“有没有键”，不直接碰外部中断和Timer0。 */
+  88          boolean Rte_IrSensorIsKeyReady(void)
+  89          {
+  90   1          return IrSensor_IsKeyReady();
+  91   1      }
+  92          
+  93          /* 读取红外按键值：实际数据来自IrSensor ISR解码结果。 */
+  94          uint8 Rte_IrSensorGetKey(void)
+  95          {
+  96   1          return IrSensor_GetKey();
+  97   1      }
+  98          
+  99          /* 清除红外按键就绪标志：表示App已经消费了这次按键。 */
+ 100          void Rte_IrSensorClearKey(void)
+ 101          {
+ 102   1          IrSensor_ClearKey();
+ 103   1      }
+ 104          
+ 105          /* 写8位LED：value的二进制位直接对应8个LED的亮灭。 */
+ 106          void Rte_Led8Write(uint8 value)
+ 107          {
+ 108   1          Led8_Write(value);
+ 109   1      }
+ 110          
+ 111          /* 异步请求LCD显示字符串：运行阶段推荐使用，不阻塞主循环。 */
+ 112          Std_ReturnType Rte_Lcd1602AsyncShowString(uint8 row, uint8 column, uint8 text[])
+ 113          {
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 01:17:00 PAGE 3   
+
+ 114   1          return Lcd1602_AsyncShowString(row, column, text);
+ 115   1      }
+ 116          
+ 117          /* 查询LCD状态机是否还在发送。 */
+ 118          boolean Rte_Lcd1602IsBusy(void)
+ 119          {
+ 120   1          return Lcd1602_IsBusy();
+ 121   1      }
+ 122          
+ 123          /* 异步写AT24C02：只发起任务，实际IIC动作由状态机完成。 */
+ 124          Std_ReturnType Rte_At24c02AsyncWrite(uint8 address, uint8 dataValue[], uint8 length)
+ 125          {
+ 126   1          return At24c02_AsyncWrite(address, dataValue, length);
+ 127   1      }
+ 128          
+ 129          /* 异步读AT24C02：只发起任务，完成后用GetData取结果。 */
+ 130          Std_ReturnType Rte_At24c02AsyncRead(uint8 address, uint8 length)
+ 131          {
+ 132   1          return At24c02_AsyncRead(address, length);
+ 133   1      }
+ 134          
+ 135          boolean Rte_At24c02IsBusy(void)
+ 136          {
+ 137   1          return At24c02_IsBusy();
+ 138   1      }
+ 139          
+ 140          boolean Rte_At24c02IsJobDone(void)
+ 141          {
+ 142   1          return At24c02_IsJobDone();
+ 143   1      }
+ 144          
+ 145          uint8 Rte_At24c02GetData(uint8 index)
+ 146          {
+ 147   1          return At24c02_GetData(index);
+ 148   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    119    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       7
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

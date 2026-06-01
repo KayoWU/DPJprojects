@@ -1,0 +1,118 @@
+C51 COMPILER V9.54   APP_FEATUREDEMO                                                       06/01/2026 05:29:07 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE APP_FEATUREDEMO
+OBJECT MODULE PLACED IN .\Objects\App_FeatureDemo.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE App\App_FeatureDemo.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config;.\Dev
+                    -ice;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bsw\Mc
+                    -al\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\EcuAb\Serial;.\Bsw\EcuAb\IoHw
+                    -Ab;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02) DEBUG OBJECTEXTEND PRINT(.\Listings\App_FeatureDemo.lst)
+                    - OBJECT(.\Objects\App_FeatureDemo.obj)
+
+line level    source
+
+   1          #include "App_FeatureDemo.h"
+   2          #include "Rte.h"
+   3          #include "Iap_Cfg.h"
+   4          #include "At24c02_Cfg.h"
+   5          
+   6          static uint8 App_FeatureDemo_Initialized = FALSE;
+   7          static uint8 App_FeatureDemo_IapNumber;
+   8          static uint8 App_FeatureDemo_At24Number;
+   9          
+  10          static uint8 App_FeatureDemo_AdcText[] = "ADC:";
+  11          static uint8 App_FeatureDemo_MemText[] = "M:";
+  12          
+  13          /* 在LCD第二行指定列显示两位十进制数，主要用于显示存储计数。 */
+  14          static void App_FeatureDemo_Show2Digits(uint8 column, uint8 value)
+  15          {
+  16   1          Rte_Lcd1602ShowChar(2u, column, (uint8)(value / 10u + '0'));
+  17   1          Rte_Lcd1602ShowChar(2u, (uint8)(column + 1u), (uint8)(value % 10u + '0'));
+  18   1      }
+  19          
+  20          /* 整合演示初始化：读出两种EEPROM的旧值，并在LCD上写固定标签。 */
+  21          static void App_FeatureDemo_Init(void)
+  22          {
+  23   1          App_FeatureDemo_IapNumber = Rte_IapReadByte(IAP_DEMO_ADDRESS);
+  24   1          App_FeatureDemo_At24Number = Rte_At24c02ReadByte(AT24C02_DEMO_ADDRESS);
+  25   1      
+  26   1          if(App_FeatureDemo_IapNumber > 10u)
+  27   1          {
+  28   2              App_FeatureDemo_IapNumber = 0u;
+  29   2          }
+  30   1          if(App_FeatureDemo_At24Number > 10u)
+  31   1          {
+  32   2              App_FeatureDemo_At24Number = 0u;
+  33   2          }
+  34   1      
+  35   1          Rte_Lcd1602ShowString(1u, 1u, App_FeatureDemo_AdcText);
+  36   1          Rte_Lcd1602ShowString(2u, 1u, App_FeatureDemo_MemText);
+  37   1          App_FeatureDemo_Show2Digits(3u, App_FeatureDemo_IapNumber);
+  38   1          App_FeatureDemo_Show2Digits(6u, App_FeatureDemo_At24Number);
+  39   1      
+  40   1          App_FeatureDemo_Initialized = TRUE;
+  41   1      }
+  42          
+  43          /* 整合演示周期任务：显示ADC电压，并按Timer2节拍更新两种EEPROM计数。 */
+  44          void App_FeatureDemo_MainFunction(void)
+  45          {
+  46   1          uint8 adcValue;
+  47   1          uint16 adcMv;
+  48   1      
+  49   1          if(App_FeatureDemo_Initialized == FALSE)
+  50   1          {
+  51   2              App_FeatureDemo_Init();
+C51 COMPILER V9.54   APP_FEATUREDEMO                                                       06/01/2026 05:29:07 PAGE 2   
+
+  52   2          }
+  53   1      
+  54   1          adcValue = Rte_ReadAdcValue();
+  55   1          adcMv = Rte_AdcConvertToMv(adcValue);
+  56   1      
+  57   1          Rte_Lcd1602ShowChar(1u, 5u, (uint8)(adcValue / 100u + '0'));
+  58   1          Rte_Lcd1602ShowChar(1u, 6u, (uint8)(adcValue / 10u % 10u + '0'));
+  59   1          Rte_Lcd1602ShowChar(1u, 7u, (uint8)(adcValue % 10u + '0'));
+  60   1          Rte_Lcd1602ShowChar(1u, 9u, (uint8)(adcMv / 1000u + '0'));
+  61   1          Rte_Lcd1602ShowChar(1u, 10u, '.');
+  62   1          Rte_Lcd1602ShowChar(1u, 11u, (uint8)(adcMv / 100u % 10u + '0'));
+  63   1          Rte_Lcd1602ShowChar(1u, 12u, (uint8)(adcMv / 10u % 10u + '0'));
+  64   1          Rte_Lcd1602ShowChar(1u, 13u, 'V');
+  65   1      
+  66   1          if(Rte_Timer2GetElapsedFlag() == TRUE)
+  67   1          {
+  68   2              Rte_Timer2ClearElapsedFlag();
+  69   2      
+  70   2              App_FeatureDemo_IapNumber++;
+  71   2              App_FeatureDemo_At24Number++;
+  72   2              if(App_FeatureDemo_IapNumber > 10u)
+  73   2              {
+  74   3                  App_FeatureDemo_IapNumber = 0u;
+  75   3              }
+  76   2              if(App_FeatureDemo_At24Number > 10u)
+  77   2              {
+  78   3                  App_FeatureDemo_At24Number = 0u;
+  79   3              }
+  80   2      
+  81   2              Rte_IapEraseSector(IAP_DEMO_ADDRESS);
+  82   2              Rte_IapProgramByte(IAP_DEMO_ADDRESS, App_FeatureDemo_IapNumber);
+  83   2              Rte_At24c02WriteByte(AT24C02_DEMO_ADDRESS, App_FeatureDemo_At24Number);
+  84   2              App_FeatureDemo_At24Number = Rte_At24c02ReadByte(AT24C02_DEMO_ADDRESS);
+  85   2      
+  86   2              App_FeatureDemo_Show2Digits(3u, App_FeatureDemo_IapNumber);
+  87   2              App_FeatureDemo_Show2Digits(6u, App_FeatureDemo_At24Number);
+  88   2          }
+  89   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    404    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     11       5
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

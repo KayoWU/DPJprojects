@@ -1,0 +1,319 @@
+C51 COMPILER V9.54   AT24C02                                                               06/02/2026 01:17:01 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE AT24C02
+OBJECT MODULE PLACED IN .\Objects\At24c02.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\EcuAb\At24c02\At24c02.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config
+                    -;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\
+                    -Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\Ecu
+                    -Ab\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECTE
+                    -XTEND PRINT(.\Listings\At24c02.lst) OBJECT(.\Objects\At24c02.obj)
+
+line level    source
+
+   1          #include "At24c02.h"
+   2          #include "Iic.h"
+   3          
+   4          #define AT24C02_BUFFER_SIZE       8u
+   5          #define AT24C02_STATE_IDLE        0u
+   6          #define AT24C02_STATE_START_REQ   1u
+   7          #define AT24C02_STATE_START_WAIT  2u
+   8          #define AT24C02_STATE_DEVW_REQ    3u
+   9          #define AT24C02_STATE_DEVW_WAIT   4u
+  10          #define AT24C02_STATE_ACK_REQ     5u
+  11          #define AT24C02_STATE_ACK_WAIT    6u
+  12          #define AT24C02_STATE_ADDR_REQ    7u
+  13          #define AT24C02_STATE_ADDR_WAIT   8u
+  14          #define AT24C02_STATE_DATA_REQ    9u
+  15          #define AT24C02_STATE_DATA_WAIT   10u
+  16          #define AT24C02_STATE_RSTART_REQ  11u
+  17          #define AT24C02_STATE_RSTART_WAIT 12u
+  18          #define AT24C02_STATE_DEVR_REQ    13u
+  19          #define AT24C02_STATE_DEVR_WAIT   14u
+  20          #define AT24C02_STATE_READ_REQ    15u
+  21          #define AT24C02_STATE_READ_WAIT   16u
+  22          #define AT24C02_STATE_STOP_REQ    17u
+  23          #define AT24C02_STATE_STOP_WAIT   18u
+  24          #define AT24C02_STATE_WRITE_WAIT  19u
+  25          #define AT24C02_STATE_DONE        20u
+  26          #define AT24C02_STATE_NACK_REQ    21u
+  27          #define AT24C02_STATE_NACK_WAIT   22u
+  28          
+  29          #define AT24C02_JOB_NONE          0u
+  30          #define AT24C02_JOB_WRITE         1u
+  31          #define AT24C02_JOB_READ          2u
+  32          
+  33          static uint8 At24c02_State = AT24C02_STATE_IDLE;
+  34          static uint8 At24c02_Job = AT24C02_JOB_NONE;
+  35          static uint8 At24c02_Address = 0u;
+  36          static uint8 xdata At24c02_Buffer[AT24C02_BUFFER_SIZE];
+  37          static uint8 At24c02_Length = 0u;
+  38          static uint8 At24c02_Index = 0u;
+  39          static uint8 At24c02_AfterAckState = AT24C02_STATE_IDLE;
+  40          static uint16 At24c02_WaitUntil = 0u;
+  41          
+  42          /* AT24C02初始化：先把软件IIC总线释放到空闲高电平。 */
+  43          void At24c02_Init(void)
+  44          {
+  45   1          Iic_Init();
+  46   1          At24c02_State = AT24C02_STATE_IDLE;
+  47   1          At24c02_Job = AT24C02_JOB_NONE;
+  48   1      }
+  49          
+  50          /* 异步写入：复制数据后立即返回，实际IIC动作由MainFunction推进。 */
+  51          Std_ReturnType At24c02_AsyncWrite(uint8 address, uint8 dataValue[], uint8 length)
+C51 COMPILER V9.54   AT24C02                                                               06/02/2026 01:17:01 PAGE 2   
+
+  52          {
+  53   1          uint8 i;
+  54   1      
+  55   1          if((At24c02_IsBusy() == TRUE) || (length == 0u) || (length > AT24C02_BUFFER_SIZE))
+  56   1          {
+  57   2              return E_NOT_OK;
+  58   2          }
+  59   1          for(i = 0u; i < length; i++)
+  60   1          {
+  61   2              At24c02_Buffer[i] = dataValue[i];
+  62   2          }
+  63   1          At24c02_Address = address;
+  64   1          At24c02_Length = length;
+  65   1          At24c02_Index = 0u;
+  66   1          At24c02_Job = AT24C02_JOB_WRITE;
+  67   1          At24c02_State = AT24C02_STATE_START_REQ;
+  68   1          return E_OK;
+  69   1      }
+  70          
+  71          /* 异步读取：只发起任务，读取结果后续用At24c02_GetData取得。 */
+  72          Std_ReturnType At24c02_AsyncRead(uint8 address, uint8 length)
+  73          {
+  74   1          if((At24c02_IsBusy() == TRUE) || (length == 0u) || (length > AT24C02_BUFFER_SIZE))
+  75   1          {
+  76   2              return E_NOT_OK;
+  77   2          }
+  78   1          At24c02_Address = address;
+  79   1          At24c02_Length = length;
+  80   1          At24c02_Index = 0u;
+  81   1          At24c02_Job = AT24C02_JOB_READ;
+  82   1          At24c02_State = AT24C02_STATE_START_REQ;
+  83   1          return E_OK;
+  84   1      }
+  85          
+  86          /* AT24C02任务状态机：把一次读写拆成多个IIC小操作。 */
+  87          void At24c02_MainFunction(uint16 tick)
+  88          {
+  89   1          switch(At24c02_State)
+  90   1          {
+  91   2              case AT24C02_STATE_START_REQ:
+  92   2                  if(Iic_StartOperation(IIC_OPERATION_START, 0u) == E_OK)
+  93   2                  {
+  94   3                      At24c02_State = AT24C02_STATE_START_WAIT;
+  95   3                  }
+  96   2                  break;
+  97   2              case AT24C02_STATE_START_WAIT:
+  98   2                  if(Iic_IsDone() == TRUE)
+  99   2                  {
+ 100   3                      At24c02_State = AT24C02_STATE_DEVW_REQ;
+ 101   3                  }
+ 102   2                  break;
+ 103   2              case AT24C02_STATE_DEVW_REQ:
+ 104   2                  if(Iic_StartOperation(IIC_OPERATION_WRITE_BYTE, 0xa0u) == E_OK)
+ 105   2                  {
+ 106   3                      At24c02_State = AT24C02_STATE_DEVW_WAIT;
+ 107   3                  }
+ 108   2                  break;
+ 109   2              case AT24C02_STATE_DEVW_WAIT:
+ 110   2                  if(Iic_IsDone() == TRUE)
+ 111   2                  {
+ 112   3                      At24c02_AfterAckState = AT24C02_STATE_ADDR_REQ;
+ 113   3                      At24c02_State = AT24C02_STATE_ACK_REQ;
+C51 COMPILER V9.54   AT24C02                                                               06/02/2026 01:17:01 PAGE 3   
+
+ 114   3                  }
+ 115   2                  break;
+ 116   2              case AT24C02_STATE_ACK_REQ:
+ 117   2                  if(Iic_StartOperation(IIC_OPERATION_WAIT_ACK, 0u) == E_OK)
+ 118   2                  {
+ 119   3                      At24c02_State = AT24C02_STATE_ACK_WAIT;
+ 120   3                  }
+ 121   2                  break;
+ 122   2              case AT24C02_STATE_ACK_WAIT:
+ 123   2                  if(Iic_IsDone() == TRUE)
+ 124   2                  {
+ 125   3                      At24c02_State = At24c02_AfterAckState;
+ 126   3                  }
+ 127   2                  break;
+ 128   2              case AT24C02_STATE_ADDR_REQ:
+ 129   2                  if(Iic_StartOperation(IIC_OPERATION_WRITE_BYTE, (uint8)(At24c02_Address + At24c02_Index)) == E
+             -_OK)
+ 130   2                  {
+ 131   3                      At24c02_State = AT24C02_STATE_ADDR_WAIT;
+ 132   3                  }
+ 133   2                  break;
+ 134   2              case AT24C02_STATE_ADDR_WAIT:
+ 135   2                  if(Iic_IsDone() == TRUE)
+ 136   2                  {
+ 137   3                      if(At24c02_Job == AT24C02_JOB_WRITE)
+ 138   3                      {
+ 139   4                          At24c02_AfterAckState = AT24C02_STATE_DATA_REQ;
+ 140   4                      }
+ 141   3                      else
+ 142   3                      {
+ 143   4                          At24c02_AfterAckState = AT24C02_STATE_RSTART_REQ;
+ 144   4                      }
+ 145   3                      At24c02_State = AT24C02_STATE_ACK_REQ;
+ 146   3                  }
+ 147   2                  break;
+ 148   2              case AT24C02_STATE_DATA_REQ:
+ 149   2                  if(Iic_StartOperation(IIC_OPERATION_WRITE_BYTE, At24c02_Buffer[At24c02_Index]) == E_OK)
+ 150   2                  {
+ 151   3                      At24c02_State = AT24C02_STATE_DATA_WAIT;
+ 152   3                  }
+ 153   2                  break;
+ 154   2              case AT24C02_STATE_DATA_WAIT:
+ 155   2                  if(Iic_IsDone() == TRUE)
+ 156   2                  {
+ 157   3                      At24c02_Index++;
+ 158   3                      if(At24c02_Index >= At24c02_Length)
+ 159   3                      {
+ 160   4                          At24c02_AfterAckState = AT24C02_STATE_STOP_REQ;
+ 161   4                      }
+ 162   3                      else
+ 163   3                      {
+ 164   4                          At24c02_AfterAckState = AT24C02_STATE_DATA_REQ;
+ 165   4                      }
+ 166   3                      At24c02_State = AT24C02_STATE_ACK_REQ;
+ 167   3                  }
+ 168   2                  break;
+ 169   2              case AT24C02_STATE_RSTART_REQ:
+ 170   2                  if(Iic_StartOperation(IIC_OPERATION_START, 0u) == E_OK)
+ 171   2                  {
+ 172   3                      At24c02_State = AT24C02_STATE_RSTART_WAIT;
+ 173   3                  }
+ 174   2                  break;
+C51 COMPILER V9.54   AT24C02                                                               06/02/2026 01:17:01 PAGE 4   
+
+ 175   2              case AT24C02_STATE_RSTART_WAIT:
+ 176   2                  if(Iic_IsDone() == TRUE)
+ 177   2                  {
+ 178   3                      At24c02_State = AT24C02_STATE_DEVR_REQ;
+ 179   3                  }
+ 180   2                  break;
+ 181   2              case AT24C02_STATE_DEVR_REQ:
+ 182   2                  if(Iic_StartOperation(IIC_OPERATION_WRITE_BYTE, 0xa1u) == E_OK)
+ 183   2                  {
+ 184   3                      At24c02_State = AT24C02_STATE_DEVR_WAIT;
+ 185   3                  }
+ 186   2                  break;
+ 187   2              case AT24C02_STATE_DEVR_WAIT:
+ 188   2                  if(Iic_IsDone() == TRUE)
+ 189   2                  {
+ 190   3                      At24c02_AfterAckState = AT24C02_STATE_READ_REQ;
+ 191   3                      At24c02_State = AT24C02_STATE_ACK_REQ;
+ 192   3                  }
+ 193   2                  break;
+ 194   2              case AT24C02_STATE_READ_REQ:
+ 195   2                  if(Iic_StartOperation(IIC_OPERATION_READ_BYTE, 0u) == E_OK)
+ 196   2                  {
+ 197   3                      At24c02_State = AT24C02_STATE_READ_WAIT;
+ 198   3                  }
+ 199   2                  break;
+ 200   2              case AT24C02_STATE_READ_WAIT:
+ 201   2                  if(Iic_IsDone() == TRUE)
+ 202   2                  {
+ 203   3                      At24c02_Buffer[At24c02_Index] = Iic_GetReadData();
+ 204   3                      At24c02_Index++;
+ 205   3                      At24c02_State = AT24C02_STATE_NACK_REQ;
+ 206   3                  }
+ 207   2                  break;
+ 208   2              case AT24C02_STATE_NACK_REQ:
+ 209   2                  if(Iic_StartOperation(IIC_OPERATION_SEND_NACK, 0u) == E_OK)
+ 210   2                  {
+ 211   3                      At24c02_State = AT24C02_STATE_NACK_WAIT;
+ 212   3                  }
+ 213   2                  break;
+ 214   2              case AT24C02_STATE_NACK_WAIT:
+ 215   2                  if(Iic_IsDone() == TRUE)
+ 216   2                  {
+ 217   3                      At24c02_State = AT24C02_STATE_STOP_REQ;
+ 218   3                  }
+ 219   2                  break;
+ 220   2              case AT24C02_STATE_STOP_REQ:
+ 221   2                  if(Iic_StartOperation(IIC_OPERATION_STOP, 0u) == E_OK)
+ 222   2                  {
+ 223   3                      At24c02_State = AT24C02_STATE_STOP_WAIT;
+ 224   3                  }
+ 225   2                  break;
+ 226   2              case AT24C02_STATE_STOP_WAIT:
+ 227   2                  if(Iic_IsDone() == TRUE)
+ 228   2                  {
+ 229   3                      if(At24c02_Job == AT24C02_JOB_WRITE)
+ 230   3                      {
+ 231   4                          At24c02_WaitUntil = (uint16)(tick + 5u);
+ 232   4                          At24c02_State = AT24C02_STATE_WRITE_WAIT;
+ 233   4                      }
+ 234   3                      else if(At24c02_Index < At24c02_Length)
+ 235   3                      {
+ 236   4                          At24c02_State = AT24C02_STATE_START_REQ;
+C51 COMPILER V9.54   AT24C02                                                               06/02/2026 01:17:01 PAGE 5   
+
+ 237   4                      }
+ 238   3                      else
+ 239   3                      {
+ 240   4                          At24c02_State = AT24C02_STATE_DONE;
+ 241   4                      }
+ 242   3                  }
+ 243   2                  break;
+ 244   2              case AT24C02_STATE_WRITE_WAIT:
+ 245   2                  if((sint16)(tick - At24c02_WaitUntil) >= 0)
+ 246   2                  {
+ 247   3                      At24c02_State = AT24C02_STATE_DONE;
+ 248   3                  }
+ 249   2                  break;
+ 250   2              default:
+ 251   2                  break;
+ 252   2          }
+ 253   1      }
+ 254          
+ 255          /* AT24C02是否正在执行读写任务。 */
+ 256          boolean At24c02_IsBusy(void)
+ 257          {
+ 258   1          if((At24c02_State != AT24C02_STATE_IDLE) && (At24c02_State != AT24C02_STATE_DONE))
+ 259   1          {
+ 260   2              return TRUE;
+ 261   2          }
+ 262   1          return FALSE;
+ 263   1      }
+ 264          
+ 265          /* 最近一次异步任务是否完成。 */
+ 266          boolean At24c02_IsJobDone(void)
+ 267          {
+ 268   1          if(At24c02_State == AT24C02_STATE_DONE)
+ 269   1          {
+ 270   2              return TRUE;
+ 271   2          }
+ 272   1          return FALSE;
+ 273   1      }
+ 274          
+ 275          /* 读取异步读任务缓冲区中的结果。 */
+ 276          uint8 At24c02_GetData(uint8 index)
+ 277          {
+ 278   1          if(index >= AT24C02_BUFFER_SIZE)
+ 279   1          {
+ 280   2              return 0u;
+ 281   2          }
+ 282   1          return At24c02_Buffer[index];
+ 283   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    690    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      8    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      8       9
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

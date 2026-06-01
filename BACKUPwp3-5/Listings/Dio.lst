@@ -1,0 +1,71 @@
+C51 COMPILER V9.54   DIO                                                                   06/02/2026 01:17:00 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE DIO
+OBJECT MODULE PLACED IN .\Objects\Dio.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Mcal\Dio\Dio.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config;.\Device
+                    -;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bsw\Mcal\
+                    -Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\EcuAb\Serial
+                    -;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECTEXTEND PRI
+                    -NT(.\Listings\Dio.lst) OBJECT(.\Objects\Dio.obj)
+
+line level    source
+
+   1          /**
+   2           * @file    Dio.c
+   3           * @brief   Digital I/O driver implementation
+   4           *
+   5           * Direct register writes to 8051 port registers.
+   6           * Each API validates the port/channel ID before accessing hardware.
+   7           */
+   8          
+   9          #include "Dio.h"
+  10          #include "Det.h"
+  11          
+  12          /* 写整个端口8位：当前只支持P1，非法端口号会报到Det。 */
+  13          void Dio_WritePort(uint8 portId, uint8 portLevel)
+  14          {
+  15   1          if(portId == DIO_PORT_P1)
+  16   1          {
+  17   2              P1 = portLevel;  /* 一次写8位：P1.0~P1.7 */
+  18   2          }
+  19   1          else
+  20   1          {
+  21   2              (void)Det_ReportError(DIO_MODULE_ID, DIO_INSTANCE_ID,
+  22   2                                    DIO_WRITE_PORT_API_ID, DIO_E_PARAM_INVALID_PORT_ID);
+  23   2          }
+  24   1      }
+  25          
+  26          /* 写单个引脚1位：当前支持P2.3和P2.5，非法通道号会报到Det。 */
+  27          void Dio_WriteChannel(uint8 channelId, uint8 channelLevel)
+  28          {
+  29   1          if(channelId == DIO_CHANNEL_P23)
+  30   1          {
+  31   2              P23 = channelLevel;  /* 写单个位：P2.3 */
+  32   2          }
+  33   1          else if(channelId == DIO_CHANNEL_P25)
+  34   1          {
+  35   2              P25 = channelLevel;  /* 写单个位：P2.5 */
+  36   2          }
+  37   1          else
+  38   1          {
+  39   2              (void)Det_ReportError(DIO_MODULE_ID, DIO_INSTANCE_ID,
+  40   2                                    DIO_WRITE_CHANNEL_API_ID, DIO_E_PARAM_INVALID_CHANNEL_ID);
+  41   2          }
+  42   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     52    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+C51 COMPILER V9.54   DIO                                                                   06/02/2026 01:17:00 PAGE 2   
+
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

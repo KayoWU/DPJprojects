@@ -1,0 +1,177 @@
+C51 COMPILER V9.54   LCD1602                                                               06/02/2026 01:17:01 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE LCD1602
+OBJECT MODULE PLACED IN .\Objects\Lcd1602.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\EcuAb\Lcd1602\Lcd1602.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config
+                    -;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\
+                    -Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\Ecu
+                    -Ab\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECTE
+                    -XTEND PRINT(.\Listings\Lcd1602.lst) OBJECT(.\Objects\Lcd1602.obj)
+
+line level    source
+
+   1          #include "Lcd1602.h"
+   2          #include "Delay.h"
+   3          
+   4          #define LCD1602_DATA_PORT P0
+   5          #define LCD1602_QUEUE_SIZE  24u
+   6          #define LCD1602_OP_COMMAND  0u
+   7          #define LCD1602_OP_DATA     1u
+   8          
+   9          sbit Lcd1602_Rs = P3^5;
+  10          sbit Lcd1602_En = P3^4;
+  11          
+  12          static uint8 xdata Lcd1602_QueueType[LCD1602_QUEUE_SIZE];
+  13          static uint8 xdata Lcd1602_QueueData[LCD1602_QUEUE_SIZE];
+  14          static uint8 Lcd1602_QueueLength = 0u;
+  15          static uint8 Lcd1602_QueueIndex = 0u;
+  16          static uint16 Lcd1602_NextTick = 0u;
+  17          
+  18          /* 运行期低层写入：只翻转引脚，不使用Delay，节奏交给MainFunction控制。 */
+  19          static void Lcd1602_WriteRaw(uint8 type, uint8 dataValue)
+  20          {
+  21   1          Lcd1602_En = 0;
+  22   1          if(type == LCD1602_OP_COMMAND)
+  23   1          {
+  24   2              Lcd1602_Rs = 0;
+  25   2          }
+  26   1          else
+  27   1          {
+  28   2              Lcd1602_Rs = 1;
+  29   2          }
+  30   1          LCD1602_DATA_PORT = dataValue;
+  31   1          Lcd1602_En = 1;
+  32   1          _nop_();
+  33   1          Lcd1602_En = 0;
+  34   1      }
+  35          
+  36          /* 把一次LCD操作放进队列：队列由MainFunction慢慢发送。 */
+  37          static Std_ReturnType Lcd1602_QueuePush(uint8 type, uint8 dataValue)
+  38          {
+  39   1          if(Lcd1602_QueueLength >= LCD1602_QUEUE_SIZE)
+  40   1          {
+  41   2              return E_NOT_OK;
+  42   2          }
+  43   1          Lcd1602_QueueType[Lcd1602_QueueLength] = type;
+  44   1          Lcd1602_QueueData[Lcd1602_QueueLength] = dataValue;
+  45   1          Lcd1602_QueueLength++;
+  46   1          return E_OK;
+  47   1      }
+  48          
+  49          /* 根据行列计算LCD内部DDRAM地址，row和column都从1开始。 */
+  50          static uint8 Lcd1602_MakeAddress(uint8 row, uint8 column)
+  51          {
+C51 COMPILER V9.54   LCD1602                                                               06/02/2026 01:17:01 PAGE 2   
+
+  52   1          if(row == 1u)
+  53   1          {
+  54   2              return (uint8)(0x80u + column - 1u);
+  55   2          }
+  56   1          return (uint8)(0x80u + 0x40u + column - 1u);
+  57   1      }
+  58          
+  59          /* 写LCD1602命令：RS=0表示当前总线上放的是控制命令。 */
+  60          void Lcd1602_WriteCommand(uint8 command)
+  61          {
+  62   1          Lcd1602_En = 0;
+  63   1          Lcd1602_Rs = 0;
+  64   1          LCD1602_DATA_PORT = command;
+  65   1          Lcd1602_En = 1;
+  66   1          Delay_WaitMs(1u);
+  67   1          Lcd1602_En = 0;
+  68   1      }
+  69          
+  70          /* LCD1602初始化：配置显示模式、开显示、光标移动方式，并清屏。 */
+  71          void Lcd1602_Init(void)
+  72          {
+  73   1          Lcd1602_WriteCommand(0x38u);
+  74   1          Delay_WaitMs(40u);
+  75   1          Lcd1602_WriteCommand(0x0cu);
+  76   1          Delay_WaitMs(40u);
+  77   1          Lcd1602_WriteCommand(0x06u);
+  78   1          Delay_WaitMs(40u);
+  79   1          Lcd1602_WriteCommand(0x01u);
+  80   1          Delay_WaitMs(40u);
+  81   1          Lcd1602_QueueLength = 0u;
+  82   1          Lcd1602_QueueIndex = 0u;
+  83   1      }
+  84          
+  85          /* 请求异步显示字符串：只入队，不等待LCD完成。 */
+  86          Std_ReturnType Lcd1602_AsyncShowString(uint8 row, uint8 column, uint8 text[])
+  87          {
+  88   1          uint8 i;
+  89   1      
+  90   1          if((row != 1u && row != 2u) || column < 1u || column > 40u)
+  91   1          {
+  92   2              return E_NOT_OK;
+  93   2          }
+  94   1          if(Lcd1602_IsBusy() == TRUE)
+  95   1          {
+  96   2              return E_NOT_OK;
+  97   2          }
+  98   1      
+  99   1          Lcd1602_QueueLength = 0u;
+ 100   1          Lcd1602_QueueIndex = 0u;
+ 101   1          if(Lcd1602_QueuePush(LCD1602_OP_COMMAND, Lcd1602_MakeAddress(row, column)) != E_OK)
+ 102   1          {
+ 103   2              return E_NOT_OK;
+ 104   2          }
+ 105   1          for(i = 0u; text[i] != '\0'; i++)
+ 106   1          {
+ 107   2              if(Lcd1602_QueuePush(LCD1602_OP_DATA, text[i]) != E_OK)
+ 108   2              {
+ 109   3                  return E_NOT_OK;
+ 110   3              }
+ 111   2          }
+ 112   1          return E_OK;
+ 113   1      }
+C51 COMPILER V9.54   LCD1602                                                               06/02/2026 01:17:01 PAGE 3   
+
+ 114          
+ 115          /* LCD运行期状态机：每到1ms发送队列中的一步，避免阻塞主循环。 */
+ 116          void Lcd1602_MainFunction(uint16 tick)
+ 117          {
+ 118   1          if(Lcd1602_QueueIndex >= Lcd1602_QueueLength)
+ 119   1          {
+ 120   2              return;
+ 121   2          }
+ 122   1          if((sint16)(tick - Lcd1602_NextTick) < 0)
+ 123   1          {
+ 124   2              return;
+ 125   2          }
+ 126   1      
+ 127   1          Lcd1602_WriteRaw(Lcd1602_QueueType[Lcd1602_QueueIndex],
+ 128   1                           Lcd1602_QueueData[Lcd1602_QueueIndex]);
+ 129   1          Lcd1602_QueueIndex++;
+ 130   1          Lcd1602_NextTick = (uint16)(tick + 1u);
+ 131   1          if(Lcd1602_QueueIndex >= Lcd1602_QueueLength)
+ 132   1          {
+ 133   2              Lcd1602_QueueLength = 0u;
+ 134   2              Lcd1602_QueueIndex = 0u;
+ 135   2          }
+ 136   1      }
+ 137          
+ 138          /* 查询LCD是否还有待发送内容。 */
+ 139          boolean Lcd1602_IsBusy(void)
+ 140          {
+ 141   1          if(Lcd1602_QueueLength == 0u)
+ 142   1          {
+ 143   2              return FALSE;
+ 144   2          }
+ 145   1          return TRUE;
+ 146   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    339    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     48    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      4       5
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,47 @@
+C51 COMPILER V9.54   DELAY                                                                 06/02/2026 01:17:00 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE DELAY
+OBJECT MODULE PLACED IN .\Objects\Delay.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Mcal\Delay\Delay.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config;.\De
+                    -vice;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bsw\M
+                    -cal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\EcuAb\Se
+                    -rial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECTEXTEND
+                    - PRINT(.\Listings\Delay.lst) OBJECT(.\Objects\Delay.obj)
+
+line level    source
+
+   1          /**
+   2           * @file    Delay.c
+   3           * @brief   Software delay implementation — nested busy loops
+   4           *
+   5           * The inner-loop count of 115 is calibrated for ~1 ms per outer
+   6           * iteration at ~11.0592 MHz with default compiler optimisation.
+   7           * This is approximate; use a hardware timer for precise timing.
+   8           */
+   9          
+  10          #include "Delay.h"
+  11          
+  12          /* 阻塞延时：靠空循环消耗时间，简单但CPU会一直等在这里。 */
+  13          void Delay_WaitMs(uint16 ms)
+  14          {
+  15   1          uint i, j;
+  16   1          for(i = ms; i > 0; i--)          /* 外层：ms 次 */
+  17   1          {
+  18   2              for(j = 115; j > 0; j--);    /* 内层：115 次 ≈ 1ms（11.0592MHz） */
+  19   2          }
+  20   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     30    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
