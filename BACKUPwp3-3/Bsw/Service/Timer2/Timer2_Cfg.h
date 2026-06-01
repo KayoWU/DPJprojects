@@ -1,0 +1,8 @@
+#ifndef TIMER2_CFG_H
+#define TIMER2_CFG_H
+
+#define TIMER2_FOSC   11059200L
+#define TIMER2_COUNT  1u
+#define TIMER2_RELOAD (65536u - TIMER2_COUNT * TIMER2_FOSC / 12u / 1000u)
+
+#endif
