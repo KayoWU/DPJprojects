@@ -1,0 +1,56 @@
+C51 COMPILER V9.54   LED8                                                                  06/02/2026 03:02:40 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE LED8
+OBJECT MODULE PLACED IN .\Objects\Led8.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\EcuAb\Led8\Led8.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\Co
+                    -nfig;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer
+                    -2;.\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw
+                    -\EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJ
+                    -ECTEXTEND PRINT(.\Listings\Led8.lst) OBJECT(.\Objects\Led8.obj)
+
+line level    source
+
+   1          #include "Led8.h"
+   2          #include "Dio.h"
+   3          
+   4          /* LED初始化：默认全灭，并释放P1总线给ADC读取使用。 */
+   5          void Led8_Init(void)
+   6          {
+   7   1          Led8_Write(0x00u);
+   8   1      }
+   9          
+  10          /*
+  11           * 写8位LED显示值。
+  12           * value的bit为1表示对应LED亮；硬件低电平点亮，所以输出到P1前取反。
+  13           * 74HC573的LE=1透明传输，LE=0锁存保持；锁存后P1重新写1，避免影响ADC并口读取。
+  14           */
+  15          void Led8_Write(uint8 value)
+  16          {
+  17   1          uint8 portLevel;
+  18   1      
+  19   1      #if (LED8_ACTIVE_LOW == STD_ON)
+  20   1          portLevel = (uint8)(~value);
+  21   1      #else
+                  portLevel = value;
+              #endif
+  24   1      
+  25   1          Dio_WriteChannel(LED8_LATCH_CHANNEL, 1u); /* LE=1，P1数据透明到锁存器输出 */
+  26   1          Dio_WritePort(LED8_DATA_PORT, portLevel);
+  27   1          Dio_WriteChannel(LED8_LATCH_CHANNEL, 0u); /* LE=0，锁存当前LED数据 */
+  28   1          Dio_WritePort(LED8_DATA_PORT, 0xffu);     /* 释放P1，方便ADC把数据送到P1 */
+  29   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     37    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

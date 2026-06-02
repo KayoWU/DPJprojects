@@ -1,0 +1,108 @@
+C51 COMPILER V9.54   UART                                                                  06/02/2026 03:02:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE UART
+OBJECT MODULE PLACED IN .\Objects\Uart.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Mcal\Uart\Uart.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\Con
+                    -fig;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2
+                    -;.\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\
+                    -EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJE
+                    -CTEXTEND PRINT(.\Listings\Uart.lst) OBJECT(.\Objects\Uart.obj)
+
+line level    source
+
+   1          /* UART底层驱动：配置8051串口和Timer1波特率，中断里收发字节。 */
+   2          
+   3          #include "Uart.h"
+   4          #include "Uart_Cfg.h"
+   5          #include "SchM.h"
+   6          
+   7          /* 接收缓存：中断写入，主循环读取，读写时用SchM保护。 */
+   8          static volatile uint8 Uart_RxData;
+   9          
+  10          /* TRUE表示上一个字节还没发完，避免连续写SBUF覆盖数据。 */
+  11          static volatile boolean Uart_TxBusy = FALSE;
+  12          
+  13          /* 串口初始化：模式1接收，Timer1自动重装产生9600波特率，开启串口中断。 */
+  14          void Uart_Init(void)
+  15          {
+  16   1          SCON = 0x50;                                   /* 模式1, REN=1(允许接收) */
+  17   1          PCON = PCON & 0x7f;                            /* SMOD=0, 波特率不加倍 */
+  18   1          ES   = 1;                                      /* 开串口中断 */
+  19   1          TMOD = 0x20;                                   /* T1: 8位自动重装 */
+  20   1          TH1  = TL1 = 256 - (UART_FOSC / 12 / 32 / UART_BAUD); /* 波特率 = 晶振/12/32/(256-TH1) */
+  21   1          Uart_TxBusy = FALSE;
+  22   1          TR1  = 1;                                      /* 启动定时器1 */
+  23   1          EA   = 1;                                      /* 开总中断 */
+  24   1      }
+  25          
+  26          /* 读取收到的字节：临界区内取值，避免和串口中断同时访问。 */
+  27          uint8 Uart_GetReceivedData(void)
+  28          {
+  29   1          uint8 rxData;
+  30   1      
+  31   1          SchM_Enter_Uart_RxData();  /* 关中断 */
+  32   1          rxData = Uart_RxData;      /* 安全读取 */
+  33   1          SchM_Exit_Uart_RxData();   /* 恢复中断 */
+  34   1      
+  35   1          return rxData;
+  36   1      }
+  37          
+  38          /* 清除接收缓存：上层消费完命令后调用。 */
+  39          void Uart_ClearReceivedData(void)
+  40          {
+  41   1          SchM_Enter_Uart_RxData();
+  42   1          Uart_RxData = 0u;
+  43   1          SchM_Exit_Uart_RxData();
+  44   1      }
+  45          
+  46          /* 发送一个字节：SBUF只能在空闲时写，发送完成由TI中断释放忙标志。 */
+  47          void Uart_SendByte(uint8 txData)
+  48          {
+  49   1          if(Uart_TxBusy == FALSE)
+  50   1          {
+  51   2              Uart_TxBusy = TRUE;
+C51 COMPILER V9.54   UART                                                                  06/02/2026 03:02:39 PAGE 2   
+
+  52   2              SBUF = txData;  /* 写发送缓冲 → 硬件自动开始发送 */
+  53   2          }
+  54   1      }
+  55          
+  56          /* 查询串口发送缓冲是否可写。 */
+  57          boolean Uart_IsTxReady(void)
+  58          {
+  59   1          if(Uart_TxBusy == FALSE)
+  60   1          {
+  61   2              return TRUE;
+  62   2          }
+  63   1          return FALSE;
+  64   1      }
+  65          
+  66          /* 串口中断：RI表示收到字节，TI表示发送完成。 */
+  67          void Uart_Isr() interrupt 4
+  68          {
+  69   1          if(RI == 1)
+  70   1          {
+  71   2              RI = 0;                    /* 清接收中断标志 */
+  72   2              Uart_RxData = SBUF;        /* 从硬件缓冲读走数据 */
+  73   2          }
+  74   1          if(TI == 1)
+  75   1          {
+  76   2              TI = 0;                    /* 清发送中断标志 */
+  77   2              Uart_TxBusy = FALSE;       /* 允许发送下一个字节 */
+  78   2          }
+  79   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     83    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      2       1
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

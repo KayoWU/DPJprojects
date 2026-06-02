@@ -1,0 +1,48 @@
+C51 COMPILER V9.54   DET                                                                   06/02/2026 03:02:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE DET
+OBJECT MODULE PLACED IN .\Objects\Det.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Service\Det\Det.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\Co
+                    -nfig;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer
+                    -2;.\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw
+                    -\EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJ
+                    -ECTEXTEND PRINT(.\Listings\Det.lst) OBJECT(.\Objects\Det.obj)
+
+line level    source
+
+   1          /* Det实现：记录最后一次错误来源和累计错误次数。 */
+   2          
+   3          #include "Det.h"
+   4          
+   5          volatile uint16 Det_LastModuleId;
+   6          volatile uint8  Det_LastInstanceId;
+   7          volatile uint8  Det_LastApiId;
+   8          volatile uint8  Det_LastErrorId;
+   9          volatile uint16 Det_ErrorCount;
+  10          
+  11          /* 轻量错误记录：不打断程序，只保存最后一次错误，方便调试观察。 */
+  12          Std_ReturnType Det_ReportError(uint16 moduleId, uint8 instanceId, uint8 apiId, uint8 errorId)
+  13          {
+  14   1          Det_LastModuleId   = moduleId;    /* 哪个模块 */
+  15   1          Det_LastInstanceId = instanceId;  /* 哪个实例 */
+  16   1          Det_LastApiId      = apiId;       /* 哪个函数 */
+  17   1          Det_LastErrorId    = errorId;     /* 什么错误 */
+  18   1          Det_ErrorCount++;                 /* 错误次数+1 */
+  19   1      
+  20   1          return E_OK;
+  21   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     22    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      7       5
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

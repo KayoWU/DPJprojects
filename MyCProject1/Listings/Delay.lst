@@ -1,0 +1,40 @@
+C51 COMPILER V9.54   DELAY                                                                 06/02/2026 03:02:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE DELAY
+OBJECT MODULE PLACED IN .\Objects\Delay.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Mcal\Delay\Delay.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\C
+                    -onfig;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Time
+                    -r2;.\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bs
+                    -w\EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OB
+                    -JECTEXTEND PRINT(.\Listings\Delay.lst) OBJECT(.\Objects\Delay.obj)
+
+line level    source
+
+   1          /* Delay实现：用嵌套空循环粗略消耗时间。 */
+   2          
+   3          #include "Delay.h"
+   4          
+   5          /* 阻塞延时：靠空循环消耗时间，简单但CPU会一直等在这里。 */
+   6          void Delay_WaitMs(uint16 ms)
+   7          {
+   8   1          uint i, j;
+   9   1          for(i = ms; i > 0; i--)          /* 外层：ms 次 */
+  10   1          {
+  11   2              for(j = 115; j > 0; j--);    /* 内层：115 次 ≈ 1ms（11.0592MHz） */
+  12   2          }
+  13   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     30    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

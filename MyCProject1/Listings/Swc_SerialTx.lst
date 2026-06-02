@@ -1,0 +1,98 @@
+C51 COMPILER V9.54   SWC_SERIALTX                                                          06/02/2026 03:02:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE SWC_SERIALTX
+OBJECT MODULE PLACED IN .\Objects\Swc_SerialTx.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE App\Swc\Swc_SerialTx.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\C
+                    -onfig;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Time
+                    -r2;.\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bs
+                    -w\EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OB
+                    -JECTEXTEND PRINT(.\Listings\Swc_SerialTx.lst) OBJECT(.\Objects\Swc_SerialTx.obj)
+
+line level    source
+
+   1          #include "Swc_SerialTx.h"
+   2          #include "Rte.h"
+   3          
+   4          #define SWC_SERIAL_TX_BUFFER_LENGTH 32u
+   5          
+   6          static uint8 xdata Swc_SerialTx_Buffer[SWC_SERIAL_TX_BUFFER_LENGTH];
+   7          static uint8 Swc_SerialTx_Length = 0u;
+   8          static uint8 Swc_SerialTx_Index = 0u;
+   9          
+  10          void Swc_SerialTx_Init(void)
+  11          {
+  12   1          Swc_SerialTx_Length = 0u;
+  13   1          Swc_SerialTx_Index = 0u;
+  14   1      }
+  15          
+  16          static void Swc_SerialTx_StartReadMessage(uint8 adcRaw, uint16 adcMv)
+  17          {
+  18   1          uint8 i;
+  19   1      
+  20   1          for(i = 0u; i < SWC_SERIAL_TX_BUFFER_LENGTH; i++)
+  21   1          {
+  22   2              Swc_SerialTx_Buffer[i] = '\0';
+  23   2          }
+  24   1      
+  25   1          /* 固定格式回传，便于上位机直接观察或解析。 */
+  26   1          Swc_SerialTx_Buffer[0] = 'R';
+  27   1          Swc_SerialTx_Buffer[1] = 'E';
+  28   1          Swc_SerialTx_Buffer[2] = 'A';
+  29   1          Swc_SerialTx_Buffer[3] = 'D';
+  30   1          Swc_SerialTx_Buffer[4] = ' ';
+  31   1          Swc_SerialTx_Buffer[5] = 'A';
+  32   1          Swc_SerialTx_Buffer[6] = 'D';
+  33   1          Swc_SerialTx_Buffer[7] = 'C';
+  34   1          Swc_SerialTx_Buffer[8] = '=';
+  35   1          Swc_SerialTx_Buffer[9] = (uint8)(adcRaw / 100u + '0');
+  36   1          Swc_SerialTx_Buffer[10] = (uint8)(adcRaw / 10u % 10u + '0');
+  37   1          Swc_SerialTx_Buffer[11] = (uint8)(adcRaw % 10u + '0');
+  38   1          Swc_SerialTx_Buffer[12] = ' ';
+  39   1          Swc_SerialTx_Buffer[13] = 'M';
+  40   1          Swc_SerialTx_Buffer[14] = 'V';
+  41   1          Swc_SerialTx_Buffer[15] = '=';
+  42   1          Swc_SerialTx_Buffer[16] = (uint8)(adcMv / 1000u + '0');
+  43   1          Swc_SerialTx_Buffer[17] = (uint8)(adcMv / 100u % 10u + '0');
+  44   1          Swc_SerialTx_Buffer[18] = (uint8)(adcMv / 10u % 10u + '0');
+  45   1          Swc_SerialTx_Buffer[19] = (uint8)(adcMv % 10u + '0');
+  46   1          Swc_SerialTx_Buffer[20] = '\r';
+  47   1          Swc_SerialTx_Buffer[21] = '\n';
+  48   1          Swc_SerialTx_Length = 22u;
+  49   1          Swc_SerialTx_Index = 0u;
+  50   1      }
+  51          
+C51 COMPILER V9.54   SWC_SERIALTX                                                          06/02/2026 03:02:39 PAGE 2   
+
+  52          /* 串口发送SWC：消费发送请求，空闲时逐字节发出。 */
+  53          void Swc_SerialTx_MainFunction(void)
+  54          {
+  55   1          uint8 adcRaw;
+  56   1          uint16 adcMv;
+  57   1      
+  58   1          if(Rte_ConsumeSerialReadMessage(&adcRaw, &adcMv) == TRUE)
+  59   1          {
+  60   2              /* 新的读回结果会覆盖旧发送缓存，从头开始发。 */
+  61   2              Swc_SerialTx_StartReadMessage(adcRaw, adcMv);
+  62   2          }
+  63   1      
+  64   1          if((Swc_SerialTx_Index < Swc_SerialTx_Length) && (Rte_IsSerialTxReady() == TRUE))
+  65   1          {
+  66   2              Rte_SendSerialByte(Swc_SerialTx_Buffer[Swc_SerialTx_Index]);
+  67   2              Swc_SerialTx_Index++;
+  68   2          }
+  69   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    285    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     32    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      2       4
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

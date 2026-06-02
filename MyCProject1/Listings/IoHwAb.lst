@@ -1,0 +1,74 @@
+C51 COMPILER V9.54   IOHWAB                                                                06/01/2026 05:29:08 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE IOHWAB
+OBJECT MODULE PLACED IN .\Objects\IoHwAb.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\EcuAb\IoHwAb\IoHwAb.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config;.
+                    -\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bs
+                    -w\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\EcuAb\Serial;.\Bsw\EcuAb\
+                    -IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02) DEBUG OBJECTEXTEND PRINT(.\Listings\IoHwAb.lst) OBJE
+                    -CT(.\Objects\IoHwAb.obj)
+
+line level    source
+
+   1          /**
+   2           * @file    IoHwAb.c
+   3           * @brief   I/O Hardware Abstraction implementation
+   4           *
+   5           * Maps board-level port/channel writes to MCAL Dio.
+   6           * Init-state checking ensures hardware is only accessed after
+   7           * IoHwAb_Init() has been called.
+   8           */
+   9          
+  10          #include "IoHwAb.h"
+  11          #include "Dio.h"
+  12          #include "Det.h"
+  13          
+  14          /** 模块初始化标志 */
+  15          static boolean IoHwAb_IsInitialized = FALSE;
+  16          
+  17          /* 板级I/O抽象初始化：当前无需配置寄存器，只记录模块已初始化。 */
+  18          void IoHwAb_Init(void)
+  19          {
+  20   1          IoHwAb_IsInitialized = TRUE;  /* I/O抽象模块无需硬件配置，只置标志 */
+  21   1      }
+  22          
+  23          /* 写板级整端口：通过配置映射到MCU的P1端口。 */
+  24          void IoHwAb_WriteBoardPort(uint8 portLevel)
+  25          {
+  26   1          if(IoHwAb_IsInitialized == FALSE)
+  27   1          {
+  28   2              (void)Det_ReportError(IOHWAB_MODULE_ID, IOHWAB_INSTANCE_ID,
+  29   2                                    IOHWAB_WRITE_BOARD_PORT_API_ID, IOHWAB_E_UNINIT);
+  30   2              return;
+  31   2          }
+  32   1          Dio_WritePort(IOHWAB_BOARD_PORT, portLevel);  /* 写P1全部8位 */
+  33   1      }
+  34          
+  35          /* 写板级单通道：通过配置映射到MCU的P2.3引脚。 */
+  36          void IoHwAb_WriteBoardChannel(uint8 channelLevel)
+  37          {
+  38   1          if(IoHwAb_IsInitialized == FALSE)
+  39   1          {
+  40   2              (void)Det_ReportError(IOHWAB_MODULE_ID, IOHWAB_INSTANCE_ID,
+  41   2                                    IOHWAB_WRITE_BOARD_CHANNEL_API_ID, IOHWAB_E_UNINIT);
+  42   2              return;
+  43   2          }
+  44   1          Dio_WriteChannel(IOHWAB_BOARD_CHANNEL, channelLevel);  /* 写P2.3单个位 */
+  45   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     54    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+C51 COMPILER V9.54   IOHWAB                                                                06/01/2026 05:29:08 PAGE 2   
+
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      1       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

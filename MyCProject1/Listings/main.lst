@@ -1,0 +1,40 @@
+C51 COMPILER V9.54   MAIN                                                                  06/02/2026 03:02:38 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE App\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\Config;.\Devi
+                    -ce;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bsw\Mca
+                    -l\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\EcuAb\Seri
+                    -al;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECTEXTEND P
+                    -RINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          /* 程序入口：上电初始化一次，然后进入无OS的超级循环。 */
+   2          
+   3          #include "EcuM.h"
+   4          #include "App.h"
+   5          
+   6          int main(void)
+   7          {
+   8   1          EcuM_Init();          /* 上电后一次性初始化所有硬件和BSW模块 */
+   9   1          while(1)
+  10   1          {
+  11   2              App_MainFunction(); /* 周期调度RTE和各个SWC */
+  12   2          }
+  13   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =      8    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

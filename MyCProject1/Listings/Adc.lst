@@ -1,0 +1,73 @@
+C51 COMPILER V9.54   ADC                                                                   06/02/2026 03:02:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE ADC
+OBJECT MODULE PLACED IN .\Objects\Adc.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Mcal\Adc\Adc.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\Confi
+                    -g;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.
+                    -\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw\Ec
+                    -uAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJECT
+                    -EXTEND PRINT(.\Listings\Adc.lst) OBJECT(.\Objects\Adc.obj)
+
+line level    source
+
+   1          #include "Adc.h"
+   2          
+   3          sbit Adc_Cs = P0^7;
+   4          sbit Adc_Wr = P3^6;
+   5          sbit Adc_Rd = P3^7;
+   6          sbit Adc_Wei = P2^7;
+   7          
+   8          /* ADC初始化：选通ADC相关锁存/片选信号，让后续可以启动转换。 */
+   9          void Adc_Init(void)
+  10          {
+  11   1          Adc_Wei = 1;
+  12   1          Adc_Cs = 0;
+  13   1          Adc_Wei = 0;
+  14   1      }
+  15          
+  16          /* 读取ADC原始值：用WR启动转换，用RD读回P1上的8位数据。 */
+  17          uint8 Adc_ReadValue(void)
+  18          {
+  19   1          uint8 adcData;
+  20   1      
+  21   1          /* WR给一个低脉冲，通知ADC开始转换。 */
+  22   1          Adc_Wr = 1;
+  23   1          _nop_();
+  24   1          Adc_Wr = 0;
+  25   1          _nop_();
+  26   1          Adc_Wr = 1;
+  27   1          _nop_();
+  28   1          /* RD拉低后，ADC把8位转换结果输出到P1。 */
+  29   1          Adc_Rd = 1;
+  30   1          _nop_();
+  31   1          P1 = 0xffu; /* P1与LED锁存器共用，读ADC前先释放为准输入状态。 */
+  32   1          Adc_Rd = 0;
+  33   1          _nop_();
+  34   1          adcData = P1;
+  35   1          Adc_Rd = 1;
+  36   1      
+  37   1          return adcData;
+  38   1      }
+  39          
+  40          /* 把ADC原始值换算成毫伏：0对应0mV，255对应配置的参考电压。 */
+  41          uint16 Adc_ConvertToMv(uint8 adcValue)
+  42          {
+  43   1          return (uint16)(((uint32)ADC_REFERENCE_MV * adcValue) / 255u);
+  44   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     49    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+C51 COMPILER V9.54   ADC                                                                   06/02/2026 03:02:39 PAGE 2   
+
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

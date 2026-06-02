@@ -1,0 +1,91 @@
+C51 COMPILER V9.54   IAP                                                                   06/01/2026 05:29:08 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE IAP
+OBJECT MODULE PLACED IN .\Objects\Iap.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Mcal\Iap\Iap.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\Config;.\Device
+                    -;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer2;.\Bsw\Mcal\
+                    -Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;
+                    -.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02) DEBUG OBJECTEXTEND PRINT(.\Listings\Iap.lst) OBJECT(.\Objec
+                    -ts\Iap.obj)
+
+line level    source
+
+   1          #include "Iap.h"
+   2          
+   3          #define IAP_CMD_IDLE     0u
+   4          #define IAP_CMD_READ     1u
+   5          #define IAP_CMD_PROGRAM  2u
+   6          #define IAP_CMD_ERASE    3u
+   7          #define IAP_ENABLE       0x81u
+   8          
+   9          /* 关闭IAP/ISP访问：每次读写擦除结束后都要回到空闲状态。 */
+  10          static void Iap_Idle(void)
+  11          {
+  12   1          ISP_CONTR = 0u;
+  13   1          ISP_CMD = IAP_CMD_IDLE;
+  14   1          ISP_TRIG = 0u;
+  15   1          ISP_ADDRH = 0x80u;
+  16   1          ISP_ADDRL = 0u;
+  17   1      }
+  18          
+  19          /* 读取内部EEPROM一个字节：按STC要求写命令、地址，再触发操作。 */
+  20          uint8 Iap_ReadByte(uint16 address)
+  21          {
+  22   1          uint8 dataValue;
+  23   1      
+  24   1          ISP_CONTR = IAP_ENABLE;
+  25   1          ISP_CMD = IAP_CMD_READ;
+  26   1          ISP_ADDRL = (uint8)address;
+  27   1          ISP_ADDRH = (uint8)(address >> 8);
+  28   1          ISP_TRIG = 0x46u;
+  29   1          ISP_TRIG = 0xb9u;
+  30   1          _nop_();
+  31   1          dataValue = ISP_DATA;
+  32   1          Iap_Idle();
+  33   1      
+  34   1          return dataValue;
+  35   1      }
+  36          
+  37          /* 写内部EEPROM一个字节：调用前通常要先擦除所在扇区。 */
+  38          void Iap_ProgramByte(uint16 address, uint8 dataValue)
+  39          {
+  40   1          ISP_CONTR = IAP_ENABLE;
+  41   1          ISP_CMD = IAP_CMD_PROGRAM;
+  42   1          ISP_ADDRL = (uint8)address;
+  43   1          ISP_ADDRH = (uint8)(address >> 8);
+  44   1          ISP_DATA = dataValue;
+  45   1          ISP_TRIG = 0x46u;
+  46   1          ISP_TRIG = 0xb9u;
+  47   1          _nop_();
+  48   1          Iap_Idle();
+  49   1      }
+  50          
+  51          /* 擦除内部EEPROM扇区：STC的IAP写入必须以擦除为前提。 */
+C51 COMPILER V9.54   IAP                                                                   06/01/2026 05:29:08 PAGE 2   
+
+  52          void Iap_EraseSector(uint16 address)
+  53          {
+  54   1          ISP_CONTR = IAP_ENABLE;
+  55   1          ISP_CMD = IAP_CMD_ERASE;
+  56   1          ISP_ADDRL = (uint8)address;
+  57   1          ISP_ADDRH = (uint8)(address >> 8);
+  58   1          ISP_TRIG = 0x46u;
+  59   1          ISP_TRIG = 0xb9u;
+  60   1          _nop_();
+  61   1          Iap_Idle();
+  62   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     78    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

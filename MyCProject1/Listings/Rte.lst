@@ -1,0 +1,346 @@
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 03:02:39 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE RTE
+OBJECT MODULE PLACED IN .\Objects\Rte.obj
+COMPILER INVOKED BY: E:\Keil5\C51\BIN\C51.EXE Bsw\Service\Rte\Rte.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\App;.\App\Swc;.\Co
+                    -nfig;.\Device;.\Bsw\Common;.\Bsw\Service\EcuM;.\Bsw\Service\Det;.\Bsw\Service\Rte;.\Bsw\Service\SchM;.\Bsw\Service\Timer
+                    -2;.\Bsw\Mcal\Uart;.\Bsw\Mcal\Delay;.\Bsw\Mcal\Dio;.\Bsw\Mcal\Adc;.\Bsw\Mcal\Iap;.\Bsw\Mcal\Iic;.\Bsw\Mcal\IrSensor;.\Bsw
+                    -\EcuAb\Serial;.\Bsw\EcuAb\IoHwAb;.\Bsw\EcuAb\Display;.\Bsw\EcuAb\Lcd1602;.\Bsw\EcuAb\At24c02;.\Bsw\EcuAb\Led8) DEBUG OBJ
+                    -ECTEXTEND PRINT(.\Listings\Rte.lst) OBJECT(.\Objects\Rte.obj)
+
+line level    source
+
+   1          /* RTE：上层SWC只通过这里访问底层服务，SWC之间的数据和事件也在这里中转。 */
+   2          
+   3          #include "Rte.h"
+   4          #include "Serial.h"
+   5          #include "Adc.h"
+   6          #include "IrSensor.h"
+   7          #include "Led8.h"
+   8          #include "Lcd1602.h"
+   9          #include "At24c02.h"
+  10          #include "Timer2.h"
+  11          #include "Iic.h"
+  12          
+  13          #define RTE_DISPLAY_TEXT_LENGTH 16u
+  14          
+  15          /* 最新ADC采样值：AdcSampler写入，Storage读取。 */
+  16          static uint8 Rte_AdcRaw = 0u;
+  17          static uint16 Rte_AdcMv = 0u;
+  18          
+  19          /* 串口命令转换成一次性请求，Storage消费后自动清除。 */
+  20          static boolean Rte_SaveRequest = FALSE;
+  21          static boolean Rte_ReadRequest = FALSE;
+  22          
+  23          /* LCD第一行显示请求，主要用于实时ADC显示。 */
+  24          static boolean Rte_DisplayAdcLinePending = FALSE;
+  25          static uint8 Rte_DisplayAdcRaw = 0u;
+  26          static uint16 Rte_DisplayAdcMv = 0u;
+  27          
+  28          /* LCD第二行显示请求：状态、EEPROM读回值、红外键值共用这一组端口。 */
+  29          static boolean Rte_DisplayLine2Pending = FALSE;
+  30          static uint8 Rte_DisplayLine2Type = RTE_DISPLAY_LINE2_NONE;
+  31          static uint8 Rte_DisplayLine2Raw = 0u;
+  32          static uint16 Rte_DisplayLine2Mv = 0u;
+  33          static uint8 Rte_DisplayLine2Key = 0u;
+  34          static uint8 xdata Rte_DisplayLine2Text[RTE_DISPLAY_TEXT_LENGTH + 1u];
+  35          
+  36          /* EEPROM读回后，SerialTx消费这组数据并逐字节发送。 */
+  37          static boolean Rte_SerialReadMessagePending = FALSE;
+  38          static uint8 Rte_SerialReadRaw = 0u;
+  39          static uint16 Rte_SerialReadMv = 0u;
+  40          
+  41          static void Rte_CopyText(uint8 destination[], uint8 source[])
+  42          {
+  43   1          uint8 i;
+  44   1      
+  45   1          for(i = 0u; (i < RTE_DISPLAY_TEXT_LENGTH) && (source[i] != '\0'); i++)
+  46   1          {
+  47   2              destination[i] = source[i];
+  48   2          }
+  49   1          destination[i] = '\0';
+  50   1      }
+  51          
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 03:02:39 PAGE 2   
+
+  52          /* 初始化RTE背后的全部服务，让App不用关心底层初始化顺序。 */
+  53          void Rte_Init(void)
+  54          {
+  55   1          Serial_Init();   /* 串口初始化 → Uart_Init */
+  56   1          Adc_Init();      /* ADC0804风格并口ADC初始化 */
+  57   1          IrSensor_Init(); /* 红外接收初始化：INT1 + Timer0 */
+  58   1          Led8_Init();     /* 8位LED锁存输出初始化 */
+  59   1          Lcd1602_Init();  /* LCD1602初始化 */
+  60   1          At24c02_Init();  /* IIC EEPROM初始化 */
+  61   1          Timer2_Init();   /* Timer2周期标志初始化 */
+  62   1      }
+  63          
+  64          /* RTE周期调度：推进所有非阻塞状态机。 */
+  65          void Rte_MainFunction(void)
+  66          {
+  67   1          uint16 tick;
+  68   1      
+  69   1          tick = Timer2_GetTick();
+  70   1          Iic_MainFunction();        /* 软件IIC每轮只走一小步 */
+  71   1          At24c02_MainFunction(tick);/* EEPROM读写状态机 */
+  72   1          Lcd1602_MainFunction(tick);/* LCD异步刷新队列 */
+  73   1          IrSensor_MainFunction();   /* 红外pulse缓冲解码 */
+  74   1      }
+  75          
+  76          /* 获取1ms系统节拍，给App做周期判断。 */
+  77          uint16 Rte_GetSystemTick(void)
+  78          {
+  79   1          return Timer2_GetTick();
+  80   1      }
+  81          
+  82          /* 读取串口接收缓存：App只通过RTE拿数据，不直接碰UART寄存器。 */
+  83          uint8 Rte_ReadSerialData(void)
+  84          {
+  85   1          return Serial_GetReceivedData();  /* 读一个字节 */
+  86   1      }
+  87          
+  88          /* 清空串口接收缓存：常用于命令处理完成后避免重复执行。 */
+  89          void Rte_ClearSerialData(void)
+  90          {
+  91   1          Serial_ClearReceivedData();       /* 清接收缓存 */
+  92   1      }
+  93          
+  94          /* 发送一个串口字节：RTE向下转给Serial，再由Uart写硬件。 */
+  95          void Rte_SendSerialByte(uint8 txData)
+  96          {
+  97   1          Serial_SendByte(txData);          /* 发一个字节 */
+  98   1      }
+  99          
+ 100          /* 查询串口是否可以发送下一个字节。 */
+ 101          boolean Rte_IsSerialTxReady(void)
+ 102          {
+ 103   1          return Serial_IsTxReady();
+ 104   1      }
+ 105          
+ 106          /* 读取ADC原始值：返回0到255的8位采样值。 */
+ 107          uint8 Rte_ReadAdcValue(void)
+ 108          {
+ 109   1          return Adc_ReadValue();
+ 110   1      }
+ 111          
+ 112          /* ADC换算：把8位采样值按配置参考电压换算成毫伏。 */
+ 113          uint16 Rte_AdcConvertToMv(uint8 adcValue)
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 03:02:39 PAGE 3   
+
+ 114          {
+ 115   1          return Adc_ConvertToMv(adcValue);
+ 116   1      }
+ 117          
+ 118          /* RTE红外接口：App只问“有没有键”，不直接碰外部中断和Timer0。 */
+ 119          boolean Rte_IrSensorIsKeyReady(void)
+ 120          {
+ 121   1          return IrSensor_IsKeyReady();
+ 122   1      }
+ 123          
+ 124          /* 读取红外按键值：实际数据来自IrSensor ISR解码结果。 */
+ 125          uint8 Rte_IrSensorGetKey(void)
+ 126          {
+ 127   1          return IrSensor_GetKey();
+ 128   1      }
+ 129          
+ 130          /* 清除红外按键就绪标志：表示App已经消费了这次按键。 */
+ 131          void Rte_IrSensorClearKey(void)
+ 132          {
+ 133   1          IrSensor_ClearKey();
+ 134   1      }
+ 135          
+ 136          /* 写8位LED：value的二进制位直接对应8个LED的亮灭。 */
+ 137          void Rte_Led8Write(uint8 value)
+ 138          {
+ 139   1          Led8_Write(value);
+ 140   1      }
+ 141          
+ 142          /* 异步请求LCD显示字符串：运行阶段推荐使用，不阻塞主循环。 */
+ 143          Std_ReturnType Rte_Lcd1602AsyncShowString(uint8 row, uint8 column, uint8 text[])
+ 144          {
+ 145   1          return Lcd1602_AsyncShowString(row, column, text);
+ 146   1      }
+ 147          
+ 148          /* 查询LCD状态机是否还在发送。 */
+ 149          boolean Rte_Lcd1602IsBusy(void)
+ 150          {
+ 151   1          return Lcd1602_IsBusy();
+ 152   1      }
+ 153          
+ 154          /* 异步写AT24C02：只发起任务，实际IIC动作由状态机完成。 */
+ 155          Std_ReturnType Rte_At24c02AsyncWrite(uint8 address, uint8 dataValue[], uint8 length)
+ 156          {
+ 157   1          return At24c02_AsyncWrite(address, dataValue, length);
+ 158   1      }
+ 159          
+ 160          /* 异步读AT24C02：只发起任务，完成后用GetData取结果。 */
+ 161          Std_ReturnType Rte_At24c02AsyncRead(uint8 address, uint8 length)
+ 162          {
+ 163   1          return At24c02_AsyncRead(address, length);
+ 164   1      }
+ 165          
+ 166          boolean Rte_At24c02IsBusy(void)
+ 167          {
+ 168   1          return At24c02_IsBusy();
+ 169   1      }
+ 170          
+ 171          boolean Rte_At24c02IsJobDone(void)
+ 172          {
+ 173   1          return At24c02_IsJobDone();
+ 174   1      }
+ 175          
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 03:02:39 PAGE 4   
+
+ 176          uint8 Rte_At24c02GetData(uint8 index)
+ 177          {
+ 178   1          return At24c02_GetData(index);
+ 179   1      }
+ 180          
+ 181          void Rte_WriteAdcSample(uint8 adcRaw, uint16 adcMv)
+ 182          {
+ 183   1          Rte_AdcRaw = adcRaw;
+ 184   1          Rte_AdcMv = adcMv;
+ 185   1      }
+ 186          
+ 187          uint8 Rte_ReadAdcRaw(void)
+ 188          {
+ 189   1          return Rte_AdcRaw;
+ 190   1      }
+ 191          
+ 192          uint16 Rte_ReadAdcMv(void)
+ 193          {
+ 194   1          return Rte_AdcMv;
+ 195   1      }
+ 196          
+ 197          void Rte_RequestAdcSave(void)
+ 198          {
+ 199   1          /* Command SWC调用；Storage SWC下一轮消费。 */
+ 200   1          Rte_SaveRequest = TRUE;
+ 201   1      }
+ 202          
+ 203          void Rte_RequestAdcRead(void)
+ 204          {
+ 205   1          Rte_ReadRequest = TRUE;
+ 206   1      }
+ 207          
+ 208          boolean Rte_ConsumeAdcSaveRequest(void)
+ 209          {
+ 210   1          if(Rte_SaveRequest == TRUE)
+ 211   1          {
+ 212   2              /* 一次性事件：读到TRUE后立即清除。 */
+ 213   2              Rte_SaveRequest = FALSE;
+ 214   2              return TRUE;
+ 215   2          }
+ 216   1          return FALSE;
+ 217   1      }
+ 218          
+ 219          boolean Rte_ConsumeAdcReadRequest(void)
+ 220          {
+ 221   1          if(Rte_ReadRequest == TRUE)
+ 222   1          {
+ 223   2              Rte_ReadRequest = FALSE;
+ 224   2              return TRUE;
+ 225   2          }
+ 226   1          return FALSE;
+ 227   1      }
+ 228          
+ 229          void Rte_DisplayRequestAdcLine(uint8 adcRaw, uint16 adcMv)
+ 230          {
+ 231   1          Rte_DisplayAdcRaw = adcRaw;
+ 232   1          Rte_DisplayAdcMv = adcMv;
+ 233   1          Rte_DisplayAdcLinePending = TRUE;
+ 234   1      }
+ 235          
+ 236          boolean Rte_DisplayConsumeAdcLine(uint8 *adcRaw, uint16 *adcMv)
+ 237          {
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 03:02:39 PAGE 5   
+
+ 238   1          if(Rte_DisplayAdcLinePending == TRUE)
+ 239   1          {
+ 240   2              *adcRaw = Rte_DisplayAdcRaw;
+ 241   2              *adcMv = Rte_DisplayAdcMv;
+ 242   2              Rte_DisplayAdcLinePending = FALSE;
+ 243   2              return TRUE;
+ 244   2          }
+ 245   1          return FALSE;
+ 246   1      }
+ 247          
+ 248          void Rte_DisplayRequestStatusLine(uint8 text[])
+ 249          {
+ 250   1          /* 文本先复制到RTE缓存，避免调用方局部变量失效。 */
+ 251   1          Rte_CopyText(Rte_DisplayLine2Text, text);
+ 252   1          Rte_DisplayLine2Type = RTE_DISPLAY_LINE2_STATUS;
+ 253   1          Rte_DisplayLine2Pending = TRUE;
+ 254   1      }
+ 255          
+ 256          void Rte_DisplayRequestReadLine(uint8 adcRaw, uint16 adcMv)
+ 257          {
+ 258   1          Rte_DisplayLine2Raw = adcRaw;
+ 259   1          Rte_DisplayLine2Mv = adcMv;
+ 260   1          Rte_DisplayLine2Type = RTE_DISPLAY_LINE2_READ_ADC;
+ 261   1          Rte_DisplayLine2Pending = TRUE;
+ 262   1      }
+ 263          
+ 264          void Rte_DisplayRequestIrLine(uint8 keyValue)
+ 265          {
+ 266   1          Rte_DisplayLine2Key = keyValue;
+ 267   1          Rte_DisplayLine2Type = RTE_DISPLAY_LINE2_IR_KEY;
+ 268   1          Rte_DisplayLine2Pending = TRUE;
+ 269   1      }
+ 270          
+ 271          boolean Rte_DisplayConsumeLine2(uint8 *lineType,
+ 272                                          uint8 *adcRaw,
+ 273                                          uint16 *adcMv,
+ 274                                          uint8 *keyValue,
+ 275                                          uint8 text[])
+ 276          {
+ 277   1          if(Rte_DisplayLine2Pending == TRUE)
+ 278   1          {
+ 279   2              *lineType = Rte_DisplayLine2Type;
+ 280   2              *adcRaw = Rte_DisplayLine2Raw;
+ 281   2              *adcMv = Rte_DisplayLine2Mv;
+ 282   2              *keyValue = Rte_DisplayLine2Key;
+ 283   2              Rte_CopyText(text, Rte_DisplayLine2Text); /* 交给LCD Presenter格式化/显示 */
+ 284   2              Rte_DisplayLine2Type = RTE_DISPLAY_LINE2_NONE;
+ 285   2              Rte_DisplayLine2Pending = FALSE;
+ 286   2              return TRUE;
+ 287   2          }
+ 288   1          return FALSE;
+ 289   1      }
+ 290          
+ 291          void Rte_RequestSerialReadMessage(uint8 adcRaw, uint16 adcMv)
+ 292          {
+ 293   1          /* Storage读完EEPROM后发布，SerialTx负责真正发送。 */
+ 294   1          Rte_SerialReadRaw = adcRaw;
+ 295   1          Rte_SerialReadMv = adcMv;
+ 296   1          Rte_SerialReadMessagePending = TRUE;
+ 297   1      }
+ 298          
+ 299          boolean Rte_ConsumeSerialReadMessage(uint8 *adcRaw, uint16 *adcMv)
+C51 COMPILER V9.54   RTE                                                                   06/02/2026 03:02:39 PAGE 6   
+
+ 300          {
+ 301   1          if(Rte_SerialReadMessagePending == TRUE)
+ 302   1          {
+ 303   2              *adcRaw = Rte_SerialReadRaw;
+ 304   2              *adcMv = Rte_SerialReadMv;
+ 305   2              Rte_SerialReadMessagePending = FALSE;
+ 306   2              return TRUE;
+ 307   2          }
+ 308   1          return FALSE;
+ 309   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    439    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     17    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     19      43
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
